@@ -3,8 +3,11 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
+
+var windows map[string]int64
 
 func doEvery(d time.Duration, f func(time.Time)) {
 	for x := range time.Tick(d) {
@@ -26,9 +29,20 @@ func printActiveWindow(t time.Time) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Printf("%v: %v", t.Format("2006-01-02 15:04:05 MST"), string(out))
+
+	windowTitle := strings.Replace(string(out), "\n", "", -1)
+
+	_, ok := windows[windowTitle]
+	if !ok {
+		windows[windowTitle] = 0
+	} else {
+		windows[windowTitle]++
+	}
+
+	fmt.Printf("%v: %v, total %v seconds\n", t.Format("2006-01-02 15:04:05 MST"), windowTitle, windows[windowTitle])
 }
 
 func main() {
+	windows = make(map[string]int64)
 	doEvery(time.Second, printActiveWindow)
 }
