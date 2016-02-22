@@ -10,8 +10,13 @@ import (
 	"time"
 )
 
-var windows map[string]int64
+var windows map[string]*Entry
 var signalChan chan os.Signal
+
+type Entry struct {
+	TotalSeconds int64
+	LastActiveTime time.Time
+}
 
 func doEvery(d time.Duration, f func(time.Time)) {
 	for x := range time.Tick(d) {
@@ -36,14 +41,16 @@ func printActiveWindow(t time.Time) {
 
 	windowTitle := strings.Replace(string(out), "\n", "", -1)
 
-	_, ok := windows[windowTitle]
+	entry, ok := windows[windowTitle]
 	if !ok {
-		windows[windowTitle] = 0
+		windows[windowTitle] = &Entry{TotalSeconds: 0, LastActiveTime: t}
+		entry = windows[windowTitle]
 	} else {
-		windows[windowTitle]++
+		entry.TotalSeconds++
+		entry.LastActiveTime = t
 	}
 
-	fmt.Printf("%v: %v, total %v seconds\n", t.Format("2006-01-02 15:04:05 MST"), windowTitle, windows[windowTitle])
+	fmt.Printf("%v: %v, total %v seconds\n", t.Format("2006-01-02 15:04:05 MST"), windowTitle, entry.TotalSeconds)
 }
 
 func beforeExit() {
@@ -66,7 +73,7 @@ func saveJsonFile(v interface{}, path string) {
 }
 
 func main() {
-	windows = make(map[string]int64)
+	windows = make(map[string]*Entry)
 	signalChan = make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
 
