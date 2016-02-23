@@ -16,6 +16,7 @@ var signalChan chan os.Signal
 type Entry struct {
 	TotalSeconds int64
 	LastActiveTime time.Time
+	Windows map[string]*Entry
 }
 
 func doEvery(d time.Duration, f func(time.Time)) {
@@ -24,7 +25,7 @@ func doEvery(d time.Duration, f func(time.Time)) {
 	}
 }
 
-func getActiveWindowName() ([]byte, error) {
+func getActiveProcessName() ([]byte, error) {
 	c := exec.Command("/usr/bin/osascript", "-e",
 		`tell application "System Events"
       set frontmostProcess to name of first process where it is frontmost
@@ -33,24 +34,50 @@ func getActiveWindowName() ([]byte, error) {
 	return c.CombinedOutput()
 }
 
+func getFrontWindowName(application string) ([]byte, error) {
+	c := exec.Command("/usr/bin/osascript", "-e",
+		`tell application "` + application + `"
+      set windowName to name of front window
+    end tell
+    return windowName`)
+	return c.CombinedOutput()
+}
+
 func printActiveWindow(t time.Time) {
-	out, err := getActiveWindowName()
+	activeProcess, err := getActiveProcessName()
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	windowTitle := strings.Replace(string(out), "\n", "", -1)
+	activeProcessTitle := strings.Replace(string(activeProcess), "\n", "", -1)
 
-	entry, ok := windows[windowTitle]
+	entry, ok := windows[activeProcessTitle]
 	if !ok {
-		windows[windowTitle] = &Entry{TotalSeconds: 0, LastActiveTime: t}
-		entry = windows[windowTitle]
+		windows[activeProcessTitle] = &Entry{TotalSeconds: 0, LastActiveTime: t, Windows: make(map[string]*Entry)}
+		entry = windows[activeProcessTitle]
 	} else {
 		entry.TotalSeconds++
 		entry.LastActiveTime = t
 	}
 
-	fmt.Printf("%v: %v, total %v seconds\n", t.Format("2006-01-02 15:04:05 MST"), windowTitle, entry.TotalSeconds)
+	fmt.Printf("%v: %v, total %v seconds\n", t.Format("2006-01-02 15:04:05 MST"), activeProcessTitle, entry.TotalSeconds)
+
+	frontWindow, err := getFrontWindowName(activeProcessTitle)
+
+	if err == nil {
+		frontWindowTitle := strings.Replace(string(frontWindow), "\n", "", -1)
+
+		windowEntry, ok := entry.Windows[frontWindowTitle]
+		if !ok {
+			entry.Windows[frontWindowTitle] = &Entry{TotalSeconds: 0, LastActiveTime: t}
+			windowEntry = entry.Windows[frontWindowTitle]
+		} else {
+			windowEntry.TotalSeconds++
+			windowEntry.LastActiveTime = t
+		}
+
+		fmt.Printf("%v: %v, total %v seconds\n", t.Format("2006-01-02 15:04:05 MST"), frontWindowTitle, windowEntry.TotalSeconds)
+	}
 }
 
 func beforeExit() {
